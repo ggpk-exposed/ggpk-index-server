@@ -1,5 +1,5 @@
 [package]
-name = "ggpk-server"
+name = "ggpk-index-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,7 @@ tempfile = "3.14.0"
 tantivy = "0.22.0"
 url = "2.5.4"
 anyhow = "1.0.94"
-reqwest = { version = "0.12.9", features = ["blocking"] }
+reqwest = { version = "0.12.9", default-features = false, features = ["blocking", "rustls-tls", "http2", "charset"] }
 oozextract = "0.5.0"
 murmurhash64 = "0.3.1"
 mime_guess = "2.0.5"

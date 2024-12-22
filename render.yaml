@@ -1,0 +1,6 @@
+services:
+  - type: web
+    plan: free
+    name: ggpk-index
+    runtime: docker
+    healthCheckPath: /files

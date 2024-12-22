@@ -38,11 +38,11 @@ async fn reindex(state: &'static IndexState, removed: Vec<String>, added: Vec<St
     match tokio::task::spawn_blocking(move || try_reindex(state, removed, added)).await {
         Ok(Ok(())) => true,
         Ok(Err(e)) => {
-            eprintln!("Error building index {}", e);
+            eprintln!("Error building index: {}", e);
             false
         }
         Err(e) => {
-            eprintln!("Join error on reindex task {}", e);
+            eprintln!("Join error on reindex task: {}", e);
             false
         }
     }

@@ -13,17 +13,19 @@ use tantivy::schema::IndexRecordOption::Basic;
 use tantivy::schema::Value;
 use tantivy::{Searcher, TantivyDocument, Term};
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Default, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Command {
+    #[default]
+    Ready,
     Index,
     Subfolders,
     Search,
-    Ready,
 }
 
 #[derive(Deserialize)]
 pub struct Params {
+    #[serde(default)]
     #[serde(rename = "q")]
     command: Command,
     adapter: Option<String>,
@@ -73,16 +75,7 @@ pub async fn handler(
         mut path,
         mut limit,
     }): Query<Params>,
-    State(AppState {
-        urls,
-        index:
-            IndexState {
-                reader,
-                fields,
-                query_parser,
-                ..
-            },
-    }): State<AppState>,
+    State(AppState { urls, index }): State<AppState>,
 ) -> Result<Json<IndexResponse>, Response> {
     let storages = { urls.read().await.clone() };
     if storages.is_empty() {
@@ -101,6 +94,13 @@ pub async fn handler(
     if path.starts_with('/') {
         path = path.trim_start_matches('/').to_string();
     }
+
+    let IndexState {
+        reader,
+        fields,
+        query_parser,
+        ..
+    } = index;
 
     let mut query: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::with_capacity(3);
 
