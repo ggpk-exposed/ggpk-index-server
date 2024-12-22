@@ -15,7 +15,13 @@ async fn main() {
         .route("/files", get(routes::browse::handler))
         .route("/version", get(routes::version::handler))
         .with_state(state);
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+    let addr = std::env::var("PORT").map_or_else(
+        |_| "0.0.0.0:3000".to_string(),
+        |port| format!("0.0.0.0:{}", port),
+    );
+
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 

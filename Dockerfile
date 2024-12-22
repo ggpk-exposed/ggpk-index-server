@@ -9,8 +9,6 @@ RUN cargo build --release --offline
 
 FROM debian:bookworm-slim
 
-EXPOSE 3000
-
 COPY --from=builder /code/target/release/ggpk-index-server /serve
 
 CMD [ "/serve" ]
