@@ -1,5 +1,6 @@
 use crate::index::state::IndexState;
 use axum::{routing::get, Router};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -16,11 +17,11 @@ async fn main() {
         .route("/version", get(routes::version::handler))
         .with_state(state);
 
-    let addr = std::env::var("PORT").map_or_else(
-        |_| "0.0.0.0:3000".to_string(),
-        |port| format!("0.0.0.0:{}", port),
-    );
-
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+    let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

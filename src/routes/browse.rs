@@ -1,5 +1,5 @@
 use crate::index::collector::CollectAll;
-use crate::index::state::{EntryType, IndexState};
+use crate::index::state::{EntryType, Fields, IndexState};
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -18,6 +18,7 @@ use tantivy::{Searcher, TantivyDocument, Term};
 enum Command {
     #[default]
     Ready,
+    Details,
     Index,
     Subfolders,
     Search,
@@ -52,6 +53,15 @@ pub struct Node {
     #[serde(rename = "type")]
     pub node_type: NodeType,
     pub mime_type: Option<String>,
+    pub size: Option<u64>,
+    pub bundle: Option<Bundle>,
+    pub bundle_offset: Option<u64>,
+}
+
+#[derive(Serialize)]
+pub struct Bundle {
+    pub name: String,
+    pub size: u64,
 }
 
 #[derive(Serialize, Eq, PartialEq)]
@@ -108,7 +118,23 @@ pub async fn handler(
         Occur::Must,
         Box::new(TermQuery::new(fields.version_term(adapter.as_str()), Basic)),
     ));
-    if command == Command::Search {
+    if command == Command::Details {
+        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path.as_str()));
+        query.push((
+            Occur::Must,
+            Box::new(TermQuery::new(
+                Term::from_field_text(fields.parent, parent),
+                Basic,
+            )),
+        ));
+        query.push((
+            Occur::Must,
+            Box::new(TermQuery::new(
+                Term::from_field_text(fields.name, name),
+                Basic,
+            )),
+        ))
+    } else if command == Command::Search {
         if limit.is_none() {
             limit = Some(10);
         }
@@ -151,46 +177,68 @@ pub async fn handler(
     let query: Box<dyn tantivy::query::Query> = Box::new(BooleanQuery::new(query));
 
     let files = perform_query(&reader.searcher(), &storages, query, limit, |doc| {
-        let doc = doc?;
-        let basename = doc
-            .get_first(fields.name)
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let parent = doc
-            .get_first(fields.parent)
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let node_type = if doc.get_first(fields.typ).and_then(|v| v.as_u64())
-            == Some(EntryType::Folder as u64)
-        {
-            NodeType::Dir
-        } else {
-            NodeType::File
-        };
-        let path: PathBuf = [&parent, &basename].iter().collect();
-        let extension = if node_type == NodeType::Dir {
-            None
-        } else {
-            path.extension().map(|v| v.to_string_lossy().to_string())
-        };
-        let path = path.to_string_lossy().to_string();
-        let mime_type = mime_guess::from_path(&path).first().map(|m| m.to_string());
-        Ok(Node {
-            path,
-            basename,
-            node_type,
-            extension,
-            mime_type,
-            storage: adapter.clone(),
-        })
+        process_doc(&adapter, fields, doc)
     })?;
+
     Ok(Json(IndexResponse {
         adapter,
         storages,
         files,
     }))
+}
+
+fn process_doc(
+    adapter: &String,
+    fields: &Fields,
+    doc: Result<TantivyDocument, Response>,
+) -> Result<Node, Response> {
+    let doc = doc?;
+    let basename = doc
+        .get_first(fields.name)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let parent = doc
+        .get_first(fields.parent)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let node_type =
+        if doc.get_first(fields.typ).and_then(|v| v.as_u64()) == Some(EntryType::Folder as u64) {
+            NodeType::Dir
+        } else {
+            NodeType::File
+        };
+    let size = doc.get_first(fields.size).and_then(|v| v.as_u64());
+    let bundle_offset = doc.get_first(fields.offset).and_then(|v| v.as_u64());
+    let path: PathBuf = [&parent, &basename].iter().collect();
+    let extension = if node_type == NodeType::Dir {
+        None
+    } else {
+        path.extension().map(|v| v.to_string_lossy().to_string())
+    };
+    let path = path.to_string_lossy().to_string();
+    let mime_type = mime_guess::from_path(&path).first().map(|m| m.to_string());
+    let bundle = doc
+        .get_first(fields.bundle)
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .and_then(|name| {
+            let bundle_size = doc.get_first(fields.bundle_size).and_then(|v| v.as_u64());
+            bundle_size.map(|size| Bundle { name, size })
+        });
+
+    Ok(Node {
+        path,
+        basename,
+        node_type,
+        extension,
+        mime_type,
+        storage: adapter.clone(),
+        size,
+        bundle_offset,
+        bundle,
+    })
 }
 
 fn perform_query<T, M: FnMut(Result<TantivyDocument, Response>) -> Result<T, Response>>(
