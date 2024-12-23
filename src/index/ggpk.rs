@@ -1,15 +1,21 @@
-use crate::index::state::Fields;
+use crate::index::state::{EntryType, Fields};
+use anyhow::Context;
+use axum::body::Bytes;
+use csv::ReaderBuilder;
+use encoding_rs::UTF_16LE;
+use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::collections::{BTreeMap, HashSet};
 use std::io::SeekFrom::Current;
-use std::io::{BufRead, BufReader, Cursor, Read, Seek};
+use std::io::{BufRead, Cursor, Read, Seek};
+use tantivy::schema::Value;
 use tantivy::{IndexWriter, TantivyDocument};
 use url::Url;
 
-pub fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Result<()> {
+pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Result<()> {
     let base = Url::parse(version)?;
     let url = base.join("Bundles2/_.index.bin")?;
-    let response = reqwest::blocking::get(url)?;
-    let index_bundle = decompress(&mut BufReader::new(response))?;
+    let response = reqwest::get(url).await?;
+    let index_bundle = decompress(&mut Cursor::new(response.bytes().await?))?;
     let cur = &mut Cursor::new(&index_bundle);
     let count = read_u32(cur)? as usize;
     let mut bundle_names = Vec::with_capacity(count);
@@ -39,6 +45,7 @@ pub fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Re
 
     let path_bundle = decompress(cur)?;
     let mut dirs = HashSet::new();
+    let mut sprites = Vec::new();
     decode_paths(path_bundle.as_slice(), &mut |filename| {
         add_file(
             filename.as_str(),
@@ -49,12 +56,22 @@ pub fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Re
             &bundle_sizes,
             &files,
             &mut dirs,
+            &mut sprites,
         )
     })?;
 
-    for dir in dirs {
+    for sprite in sprites {
+        add_sprite(sprite, writer, fields, &mut dirs).await?;
+    }
+
+    for filename in dirs {
         let mut doc = TantivyDocument::new();
-        fields.add_folder(version, dir.as_str(), &mut doc);
+        let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename.as_str()));
+        doc.add_text(fields.version, version);
+        doc.add_text(fields.path, filename.clone());
+        doc.add_text(fields.name, name);
+        doc.add_text(fields.parent, dir);
+        doc.add_text(fields.typ, EntryType::DIR);
         writer.add_document(doc)?;
     }
 
@@ -62,7 +79,7 @@ pub fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Re
 }
 
 fn add_file(
-    mut filename: &str,
+    filename: &str,
     version: &str,
     writer: &IndexWriter,
     fields: &Fields,
@@ -70,35 +87,167 @@ fn add_file(
     bundle_sizes: &Vec<u32>,
     files: &BTreeMap<u64, (u32, u32, u32)>,
     dirs: &mut HashSet<String>,
+    sprite_sheets: &mut Vec<TantivyDocument>,
 ) -> anyhow::Result<()> {
     let hash = murmurhash64::murmur_hash64a(filename.as_bytes(), 0x1337b33f);
     if let Some(&(bundle_index, offset, size)) = files.get(&hash) {
         let bundle = bundle_names[bundle_index as usize];
         let bundle_size = bundle_sizes[bundle_index as usize];
         let mut doc = TantivyDocument::new();
-        fields.add_file(
-            version,
-            filename,
-            offset,
-            size,
-            bundle,
-            bundle_size,
-            &mut doc,
-        );
+
+        let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename));
+        doc.add_text(fields.version, version);
+        doc.add_text(fields.path, filename);
+        doc.add_text(fields.name, name);
+        doc.add_text(fields.parent, dir);
+        doc.add_text(fields.typ, EntryType::FILE);
+        doc.add_u64(fields.offset, offset as u64);
+        doc.add_u64(fields.size, size as u64);
+        doc.add_text(fields.bundle, bundle);
+        doc.add_u64(fields.bundle_size, bundle_size as u64);
+
+        if filename.starts_with("art") && filename.ends_with(".txt") {
+            sprite_sheets.push(doc.clone());
+        }
+
         writer.add_document(doc)?;
 
-        // add parent dir and its parents
-        while let Some((d, _)) = filename.rsplit_once('/') {
-            if dirs.insert(d.to_string()) {
-                filename = d;
-            } else {
-                break;
-            }
-        }
+        add_dirs(filename, dirs);
     } else {
         eprintln!("No file found for hash {} of {}", hash, filename)
     }
     Ok(())
+}
+
+fn add_dirs(mut filename: &str, dirs: &mut HashSet<String>) {
+    while let Some((d, _)) = filename.rsplit_once('/') {
+        if dirs.insert(d.to_string()) {
+            filename = d;
+        } else {
+            break;
+        }
+    }
+}
+
+async fn add_sprite(
+    base: TantivyDocument,
+    writer: &IndexWriter,
+    fields: &Fields,
+    dirs: &mut HashSet<String>,
+) -> anyhow::Result<()> {
+    let mut reader = get_data(&base, fields).await?;
+
+    let sprite_txt = base.get_first(fields.path).and_then(|f| f.as_str());
+
+    for record in reader.deserialize::<(String, String, u64, u64, u64, u64)>() {
+        let (mut filename, mut source, x, y, x2, y2) = match record {
+            Err(e) => {
+                eprintln!(
+                    "Error parsing record from {:?}: {}",
+                    base.get_first(fields.path),
+                    e
+                );
+                continue;
+            }
+            Ok(r) => r,
+        };
+
+        filename = filename.to_lowercase();
+        source = source.to_lowercase();
+
+        let mut doc = TantivyDocument::new();
+        for v in base.get_all(fields.version) {
+            doc.add_field_value(fields.version, v.clone());
+        }
+
+        doc.add_text(fields.typ, EntryType::SPRITE);
+        doc.add_text(fields.path, filename.clone());
+        let filename = filename.as_str();
+        let (dir, name) = filename
+            .rsplit_once('/')
+            .unwrap_or(("art/sprites", filename));
+        doc.add_text(fields.name, name);
+        doc.add_text(fields.parent, dir);
+
+        doc.add_text(fields.sprite_sheet, source);
+        sprite_txt.map(|txt| doc.add_text(fields.sprite_txt, txt));
+        // min and abs_diff not really necessary as x1 and y1 should always be top left, but what's the harm
+        doc.add_u64(fields.sprite_x, x.min(x2));
+        doc.add_u64(fields.sprite_y, y.min(y2));
+        doc.add_u64(fields.sprite_w, x.abs_diff(x2) + 1);
+        doc.add_u64(fields.sprite_h, y.abs_diff(y2) + 1);
+
+        writer.add_document(doc)?;
+
+        add_dirs(filename, dirs);
+    }
+
+    Ok(())
+}
+
+async fn get_data(
+    doc: &TantivyDocument,
+    fields: &Fields,
+) -> anyhow::Result<csv::Reader<DecodeReaderBytes<Cursor<Bytes>, Vec<u8>>>> {
+    let size = doc
+        .get_first(fields.size)
+        .and_then(|v| v.as_u64())
+        .context("sprite size")?;
+    let bundle_name = doc
+        .get_first(fields.bundle)
+        .and_then(|v| v.as_str())
+        .context("sprite bundle")?;
+    let bundle_size = doc
+        .get_first(fields.bundle_size)
+        .and_then(|v| v.as_u64())
+        .context("sprite bundle size")?;
+    let bundle_offset = doc
+        .get_first(fields.offset)
+        .and_then(|v| v.as_u64())
+        .context("sprite offset")?;
+    let storage = doc
+        .get_first(fields.version)
+        .and_then(|v| v.as_str())
+        .context("sprite storage")?;
+    let version = storage
+        .split('/')
+        .filter(|&v| !v.is_empty())
+        .last()
+        .context("sprite version")?;
+
+    let frontend = std::env::var("FRONTEND_URL")?;
+    let mut url = Url::parse(frontend.as_str()).context(frontend)?;
+    url.path_segments_mut()
+        .map_err(|_| anyhow::Error::msg("path segments failed"))?
+        .push(version)
+        .push("sprite.txt");
+
+    {
+        let mut query = url.query_pairs_mut();
+
+        // some parameters are not used to fetch data, but must be non-empty to avoid validation errors
+        // (if validation fails the frontend will fall back to this server's index, which we are still building)
+        query.append_pair("path", "sprite");
+        query.append_pair("basename", "sprite");
+        query.append_pair("extension", "txt");
+        query.append_pair("type", "file");
+        query.append_pair("mime_type", "text/plain");
+
+        query.append_pair("storage", storage);
+        query.append_pair("size", size.to_string().as_str());
+        query.append_pair("bundle_offset", bundle_offset.to_string().as_str());
+        query.append_pair("bundle[size]", bundle_size.to_string().as_str());
+        query.append_pair("bundle[name]", bundle_name);
+    }
+
+    let utf16_bytes = reqwest::get(url).await?.bytes().await?;
+    let reader = DecodeReaderBytesBuilder::new()
+        .encoding(Some(UTF_16LE))
+        .build(Cursor::new(utf16_bytes));
+    Ok(ReaderBuilder::new()
+        .has_headers(false)
+        .delimiter(b' ')
+        .from_reader(reader))
 }
 
 fn decompress<T: Read>(f: &mut T) -> anyhow::Result<Vec<u8>> {

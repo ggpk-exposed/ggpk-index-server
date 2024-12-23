@@ -2,13 +2,15 @@ use schema::Schema;
 use tantivy::query::QueryParser;
 use tantivy::schema::{Field, SchemaBuilder};
 use tantivy::tokenizer::TokenizerManager;
-use tantivy::{schema, IndexReader, TantivyDocument};
+use tantivy::{schema, IndexReader};
 use tantivy::{Index, Term};
 use tempfile::TempDir;
 
-pub enum EntryType {
-    File,
-    Folder,
+pub struct EntryType;
+impl EntryType {
+    pub const FILE: &'static str = "file";
+    pub const DIR: &'static str = "dir";
+    pub const SPRITE: &'static str = "sprite";
 }
 
 pub struct IndexState {
@@ -61,6 +63,12 @@ pub struct Fields {
     pub bundle_size: Field,
     pub size: Field,
     pub offset: Field,
+    pub sprite_sheet: Field,
+    pub sprite_txt: Field,
+    pub sprite_x: Field,
+    pub sprite_y: Field,
+    pub sprite_w: Field,
+    pub sprite_h: Field,
 }
 
 impl Fields {
@@ -69,12 +77,18 @@ impl Fields {
         let name = schema_builder.add_text_field("name", schema::STRING | schema::STORED);
         let parent =
             schema_builder.add_text_field("parent", schema::STRING | schema::STORED | schema::FAST);
-        let typ = schema_builder.add_u64_field("type", schema::INDEXED | schema::STORED);
+        let typ = schema_builder.add_text_field("type", schema::STRING | schema::STORED);
         let version = schema_builder.add_text_field("version", schema::STRING | schema::STORED);
         let offset = schema_builder.add_u64_field("offset", schema::STORED);
         let size = schema_builder.add_u64_field("size", schema::STORED);
         let bundle = schema_builder.add_text_field("bundle", schema::STORED);
         let bundle_size = schema_builder.add_u64_field("bundle_size", schema::STORED);
+        let sprite_sheet = schema_builder.add_text_field("sprite_sheet", schema::STORED);
+        let sprite_txt = schema_builder.add_text_field("sprite_txt", schema::STORED);
+        let sprite_x = schema_builder.add_u64_field("sprite_x", schema::STORED);
+        let sprite_y = schema_builder.add_u64_field("sprite_y", schema::STORED);
+        let sprite_w = schema_builder.add_u64_field("sprite_w", schema::STORED);
+        let sprite_h = schema_builder.add_u64_field("sprite_h", schema::STORED);
 
         Self {
             path,
@@ -86,38 +100,13 @@ impl Fields {
             size,
             bundle,
             bundle_size,
+            sprite_sheet,
+            sprite_txt,
+            sprite_x,
+            sprite_y,
+            sprite_w,
+            sprite_h,
         }
-    }
-
-    pub fn add_file(
-        self: &Fields,
-        version: &str,
-        filename: &str,
-        offset: u32,
-        size: u32,
-        bundle: &str,
-        bundle_size: u32,
-        doc: &mut TantivyDocument,
-    ) {
-        let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename));
-        doc.add_text(self.version, version);
-        doc.add_text(self.path, filename);
-        doc.add_text(self.name, name);
-        doc.add_text(self.parent, dir);
-        doc.add_u64(self.typ, EntryType::File as u64);
-        doc.add_u64(self.offset, offset as u64);
-        doc.add_u64(self.size, size as u64);
-        doc.add_text(self.bundle, bundle);
-        doc.add_u64(self.bundle_size, bundle_size as u64);
-    }
-
-    pub fn add_folder(self: &Fields, version: &str, filename: &str, doc: &mut TantivyDocument) {
-        let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename));
-        doc.add_text(self.version, version);
-        doc.add_text(self.path, filename);
-        doc.add_text(self.name, name);
-        doc.add_text(self.parent, dir);
-        doc.add_u64(self.typ, EntryType::Folder as u64);
     }
 
     pub fn version_term(&self, value: &str) -> Term {

@@ -52,20 +52,37 @@ pub struct IndexResponse {
 pub struct Node {
     pub path: String,
     pub basename: String,
-    pub extension: Option<String>,
     pub storage: String,
     #[serde(rename = "type")]
     pub node_type: NodeType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle: Option<Bundle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_offset: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<Sprite>,
 }
 
 #[derive(Serialize)]
 pub struct Bundle {
     pub name: String,
     pub size: u64,
+}
+
+#[derive(Serialize)]
+pub struct Sprite {
+    pub sheet: String,
+    pub source: String,
+    pub x: u64,
+    pub y: u64,
+    pub w: u64,
+    pub h: u64,
 }
 
 #[derive(Serialize, Eq, PartialEq)]
@@ -179,7 +196,7 @@ pub async fn handler(
         query.push((
             Occur::Must,
             Box::new(TermQuery::new(
-                Term::from_field_u64(fields.typ, EntryType::Folder as u64),
+                Term::from_field_text(fields.typ, EntryType::DIR),
                 Basic,
             )),
         ))
@@ -216,12 +233,11 @@ fn process_doc(
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    let node_type =
-        if doc.get_first(fields.typ).and_then(|v| v.as_u64()) == Some(EntryType::Folder as u64) {
-            NodeType::Dir
-        } else {
-            NodeType::File
-        };
+    let node_type = if doc.get_first(fields.typ).and_then(|v| v.as_str()) == Some(EntryType::DIR) {
+        NodeType::Dir
+    } else {
+        NodeType::File
+    };
     let size = doc.get_first(fields.size).and_then(|v| v.as_u64());
     let bundle_offset = doc.get_first(fields.offset).and_then(|v| v.as_u64());
     let path: PathBuf = [&parent, &basename].iter().collect();
@@ -232,6 +248,7 @@ fn process_doc(
     };
     let path = path.to_string_lossy().to_string();
     let mime_type = mime_guess::from_path(&path).first().map(|m| m.to_string());
+
     let bundle = doc
         .get_first(fields.bundle)
         .and_then(|v| v.as_str())
@@ -240,6 +257,32 @@ fn process_doc(
             let bundle_size = doc.get_first(fields.bundle_size).and_then(|v| v.as_u64());
             bundle_size.map(|size| Bundle { name, size })
         });
+
+    let sprite = if let (Some(sheet), Some(x), Some(y), Some(w), Some(h)) = (
+        doc.get_first(fields.sprite_sheet)
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+        doc.get_first(fields.sprite_x).and_then(|v| v.as_u64()),
+        doc.get_first(fields.sprite_y).and_then(|v| v.as_u64()),
+        doc.get_first(fields.sprite_w).and_then(|v| v.as_u64()),
+        doc.get_first(fields.sprite_h).and_then(|v| v.as_u64()),
+    ) {
+        let source = doc
+            .get_first(fields.sprite_txt)
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        Some(Sprite {
+            sheet,
+            source,
+            x,
+            y,
+            w,
+            h,
+        })
+    } else {
+        None
+    };
 
     Ok(Node {
         path,
@@ -251,6 +294,7 @@ fn process_doc(
         size,
         bundle_offset,
         bundle,
+        sprite,
     })
 }
 

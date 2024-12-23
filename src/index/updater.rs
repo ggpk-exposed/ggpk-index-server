@@ -26,7 +26,10 @@ pub async fn watch(state: AppState) {
                 .cloned()
                 .collect::<Vec<_>>();
             if (!removed.is_empty() || !added.is_empty())
-                && reindex(state.index, removed, added).await
+                && reindex(state.index, removed, added)
+                    .await
+                    .map_err(|e| eprintln!("indexing failed: {:?}", e))
+                    .is_ok()
             {
                 *state.urls.write().await = updated;
             }
@@ -34,21 +37,7 @@ pub async fn watch(state: AppState) {
     }
 }
 
-async fn reindex(state: &'static IndexState, removed: Vec<String>, added: Vec<String>) -> bool {
-    match tokio::task::spawn_blocking(move || try_reindex(state, removed, added)).await {
-        Ok(Ok(())) => true,
-        Ok(Err(e)) => {
-            eprintln!("Error building index: {}", e);
-            false
-        }
-        Err(e) => {
-            eprintln!("Join error on reindex task: {}", e);
-            false
-        }
-    }
-}
-
-fn try_reindex(
+async fn reindex(
     IndexState { index, fields, .. }: &IndexState,
     removed: Vec<String>,
     added: Vec<String>,
@@ -58,7 +47,7 @@ fn try_reindex(
         writer.delete_term(fields.version_term(r.as_str()));
     }
     for r in &added {
-        crate::index::ggpk::index(r.as_str(), &writer, fields)?
+        crate::index::ggpk::index(r.as_str(), &writer, fields).await?
     }
     writer.commit()?;
     println!("Index updated - added {:?}, removed {:?}", added, removed);

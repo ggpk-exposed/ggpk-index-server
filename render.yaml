@@ -3,3 +3,6 @@ services:
     name: ggpk-index
     runtime: docker
     healthCheckPath: /files
+    envVars:
+      - key: FRONTEND_URL
+        value: https://ggpk.exposed
