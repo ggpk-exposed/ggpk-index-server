@@ -35,6 +35,8 @@ pub struct Params {
     #[serde(default)]
     filter: String,
     limit: Option<usize>,
+    #[serde(default)]
+    debug_query: bool,
 }
 
 #[derive(Serialize)]
@@ -42,6 +44,8 @@ pub struct IndexResponse {
     pub storages: Vec<String>,
     pub adapter: String,
     pub files: Vec<Node>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug_query: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -84,6 +88,7 @@ pub async fn handler(
         filter,
         mut path,
         mut limit,
+        debug_query,
     }): Query<Params>,
     State(AppState { urls, index }): State<AppState>,
 ) -> Result<Json<IndexResponse>, Response> {
@@ -93,11 +98,16 @@ pub async fn handler(
     }
     let adapter = adapter.unwrap_or_else(|| storages[0].clone());
 
+    if limit == Some(0) {
+        limit = None
+    }
+
     if command == Command::Ready {
         return Ok(Json(IndexResponse {
             adapter,
             storages,
             files: Vec::new(),
+            debug_query: None,
         }));
     }
 
@@ -176,6 +186,8 @@ pub async fn handler(
     }
     let query: Box<dyn tantivy::query::Query> = Box::new(BooleanQuery::new(query));
 
+    let debug_query = debug_query.then(|| format!("{:?}", query));
+
     let files = perform_query(&reader.searcher(), &storages, query, limit, |doc| {
         process_doc(&adapter, fields, doc)
     })?;
@@ -184,6 +196,7 @@ pub async fn handler(
         adapter,
         storages,
         files,
+        debug_query,
     }))
 }
 

@@ -62,7 +62,7 @@ pub fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Re
 }
 
 fn add_file(
-    filename: &str,
+    mut filename: &str,
     version: &str,
     writer: &IndexWriter,
     fields: &Fields,
@@ -86,8 +86,14 @@ fn add_file(
             &mut doc,
         );
         writer.add_document(doc)?;
-        if let Some((d, _)) = filename.rsplit_once('/') {
-            dirs.insert(d.to_string());
+
+        // add parent dir and its parents
+        while let Some((d, _)) = filename.rsplit_once('/') {
+            if dirs.insert(d.to_string()) {
+                filename = d;
+            } else {
+                break;
+            }
         }
     } else {
         eprintln!("No file found for hash {} of {}", hash, filename)
