@@ -51,6 +51,7 @@ pub struct IndexResponse {
 #[derive(Serialize)]
 pub struct Node {
     pub path: String,
+    pub dirname: String,
     pub basename: String,
     pub storage: String,
     #[serde(rename = "type")]
@@ -60,7 +61,7 @@ pub struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub size: Option<u64>,
+    pub file_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle: Option<Bundle>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,7 +86,7 @@ pub struct Sprite {
     pub h: u64,
 }
 
-#[derive(Serialize, Eq, PartialEq)]
+#[derive(Serialize, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
 pub enum NodeType {
     Dir,
@@ -113,7 +114,11 @@ pub async fn handler(
     if storages.is_empty() {
         return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
     }
-    let adapter = adapter.unwrap_or_else(|| storages[0].clone());
+
+    let adapter = adapter
+        .and_then(|v| storages.iter().find(|&s| s.as_str() == v.as_str()))
+        .unwrap_or_else(|| &storages[0])
+        .clone();
 
     if limit == Some(0) {
         limit = None
@@ -163,7 +168,7 @@ pub async fn handler(
         ))
     } else if command == Command::Search {
         if limit.is_none() {
-            limit = Some(10);
+            limit = Some(50);
         }
         if !path.is_empty() {
             query.push((
@@ -205,9 +210,18 @@ pub async fn handler(
 
     let debug_query = debug_query.then(|| format!("{:?}", query));
 
-    let files = perform_query(&reader.searcher(), &storages, query, limit, |doc| {
-        process_doc(&adapter, fields, doc)
+    let mut files = perform_query(&reader.searcher(), &storages, query, limit, |doc| {
+        process_doc(adapter.clone(), fields, doc)
     })?;
+
+    if limit.is_none() {
+        files.sort_by(|l, r| {
+            l.node_type
+                .cmp(&r.node_type)
+                .then(l.path.cmp(&r.path))
+                .then(l.basename.cmp(&r.basename))
+        });
+    }
 
     Ok(Json(IndexResponse {
         adapter,
@@ -218,7 +232,7 @@ pub async fn handler(
 }
 
 fn process_doc(
-    adapter: &String,
+    storage: String,
     fields: &Fields,
     doc: Result<TantivyDocument, Response>,
 ) -> Result<Node, Response> {
@@ -228,7 +242,7 @@ fn process_doc(
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();
-    let parent = doc
+    let dirname = doc
         .get_first(fields.parent)
         .and_then(|v| v.as_str())
         .unwrap_or_default()
@@ -238,9 +252,9 @@ fn process_doc(
     } else {
         NodeType::File
     };
-    let size = doc.get_first(fields.size).and_then(|v| v.as_u64());
+    let file_size = doc.get_first(fields.size).and_then(|v| v.as_u64());
     let bundle_offset = doc.get_first(fields.offset).and_then(|v| v.as_u64());
-    let path: PathBuf = [&parent, &basename].iter().collect();
+    let path: PathBuf = [&dirname, &basename].iter().collect();
     let extension = if node_type == NodeType::Dir {
         None
     } else {
@@ -286,12 +300,13 @@ fn process_doc(
 
     Ok(Node {
         path,
+        dirname,
         basename,
         node_type,
         extension,
         mime_type,
-        storage: adapter.clone(),
-        size,
+        storage,
+        file_size,
         bundle_offset,
         bundle,
         sprite,

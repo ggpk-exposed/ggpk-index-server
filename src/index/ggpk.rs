@@ -226,15 +226,17 @@ async fn get_data(
         let mut query = url.query_pairs_mut();
 
         // some parameters are not used to fetch data, but must be non-empty to avoid validation errors
-        // (if validation fails the frontend will fall back to this server's index, which we are still building)
+        // if validation fails the frontend will fall back to this server's index, which will not be ready
+        // until the current process is complete
         query.append_pair("path", "sprite");
+        query.append_pair("dirname", "/");
         query.append_pair("basename", "sprite");
         query.append_pair("extension", "txt");
         query.append_pair("type", "file");
         query.append_pair("mime_type", "text/plain");
 
         query.append_pair("storage", storage);
-        query.append_pair("size", size.to_string().as_str());
+        query.append_pair("file_size", size.to_string().as_str());
         query.append_pair("bundle_offset", bundle_offset.to_string().as_str());
         query.append_pair("bundle[size]", bundle_size.to_string().as_str());
         query.append_pair("bundle[name]", bundle_name);

@@ -41,7 +41,7 @@ impl IndexState {
 
         let mut query_parser =
             QueryParser::new(schema, vec![fields.path], TokenizerManager::default());
-        query_parser.set_field_fuzzy(fields.path, true, 2, true);
+        query_parser.set_field_fuzzy(fields.path, true, 2, false);
 
         Self {
             path,
