@@ -56,6 +56,7 @@ impl IndexState {
 pub struct Fields {
     pub path: Field,
     pub name: Field,
+    pub extension: Field,
     pub parent: Field,
     pub typ: Field,
     pub version: Field,
@@ -75,6 +76,7 @@ impl Fields {
     pub fn new(schema_builder: &mut SchemaBuilder) -> Self {
         let path = schema_builder.add_text_field("path", schema::TEXT);
         let name = schema_builder.add_text_field("name", schema::STRING | schema::STORED);
+        let extension = schema_builder.add_text_field("extension", schema::STRING);
         let parent =
             schema_builder.add_text_field("parent", schema::STRING | schema::STORED | schema::FAST);
         let typ = schema_builder.add_text_field("type", schema::STRING | schema::STORED);
@@ -93,6 +95,7 @@ impl Fields {
         Self {
             path,
             name,
+            extension,
             parent,
             typ,
             version,

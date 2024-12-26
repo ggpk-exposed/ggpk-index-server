@@ -47,17 +47,26 @@ pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyh
     let mut dirs = HashSet::new();
     let mut sprites = Vec::new();
     decode_paths(path_bundle.as_slice(), &mut |filename| {
-        add_file(
+        let mut doc = to_doc(
             filename.as_str(),
             version,
-            writer,
             fields,
             &bundle_names,
             &bundle_sizes,
             &files,
-            &mut dirs,
-            &mut sprites,
-        )
+        )?;
+
+        if let Some((_, ext)) = filename.rsplit_once('.') {
+            doc.add_text(fields.extension, ext);
+            if ext == "txt" && filename.starts_with("art") {
+                sprites.push(doc.clone());
+            }
+        }
+        writer.add_document(doc)?;
+
+        add_dirs(filename.as_str(), &mut dirs);
+
+        Ok(())
     })?;
 
     for sprite in sprites {
@@ -78,45 +87,36 @@ pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyh
     Ok(())
 }
 
-fn add_file(
+fn to_doc(
     filename: &str,
     version: &str,
-    writer: &IndexWriter,
     fields: &Fields,
     bundle_names: &Vec<&str>,
     bundle_sizes: &Vec<u32>,
     files: &BTreeMap<u64, (u32, u32, u32)>,
-    dirs: &mut HashSet<String>,
-    sprite_sheets: &mut Vec<TantivyDocument>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<TantivyDocument> {
+    let mut doc = TantivyDocument::new();
+
+    let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename));
+    doc.add_text(fields.version, version);
+    doc.add_text(fields.path, filename);
+    doc.add_text(fields.name, name);
+    doc.add_text(fields.parent, dir);
+    doc.add_text(fields.typ, EntryType::FILE);
+
     let hash = murmurhash64::murmur_hash64a(filename.as_bytes(), 0x1337b33f);
     if let Some(&(bundle_index, offset, size)) = files.get(&hash) {
         let bundle = bundle_names[bundle_index as usize];
         let bundle_size = bundle_sizes[bundle_index as usize];
-        let mut doc = TantivyDocument::new();
-
-        let (dir, name) = filename.rsplit_once('/').unwrap_or(("", filename));
-        doc.add_text(fields.version, version);
-        doc.add_text(fields.path, filename);
-        doc.add_text(fields.name, name);
-        doc.add_text(fields.parent, dir);
-        doc.add_text(fields.typ, EntryType::FILE);
         doc.add_u64(fields.offset, offset as u64);
         doc.add_u64(fields.size, size as u64);
         doc.add_text(fields.bundle, bundle);
         doc.add_u64(fields.bundle_size, bundle_size as u64);
-
-        if filename.starts_with("art") && filename.ends_with(".txt") {
-            sprite_sheets.push(doc.clone());
-        }
-
-        writer.add_document(doc)?;
-
-        add_dirs(filename, dirs);
     } else {
-        eprintln!("No file found for hash {} of {}", hash, filename)
+        eprintln!("No file found for hash {} of {}", hash, filename);
     }
-    Ok(())
+
+    Ok(doc)
 }
 
 fn add_dirs(mut filename: &str, dirs: &mut HashSet<String>) {

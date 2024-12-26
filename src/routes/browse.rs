@@ -13,6 +13,13 @@ use tantivy::schema::IndexRecordOption::Basic;
 use tantivy::schema::Value;
 use tantivy::{Searcher, TantivyDocument, Term};
 
+pub const TEXT_EXT: &'static [&'static str] = &[
+    "otc", "itc", "toy", "fxgraph", "pet", "rs", "tmd", "mat", "dlp", "et", "tgr", "ffx", "aoc",
+    "fgp", "txt", "clt", "epk", "gt", "tst", "ui", "hlsl", "arm", "hideout", "csd", "atl", "gft",
+    "amd", "tsi", "ecf", "xml", "h", "atlas", "it", "trl", "sm", "ao", "env", "mtd", "cht", "ot",
+    "act", "tgt", "dgr", "dct", "ddt", "tmo",
+];
+
 #[derive(Deserialize, Default, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Command {
@@ -261,7 +268,16 @@ fn process_doc(
         path.extension().map(|v| v.to_string_lossy().to_string())
     };
     let path = path.to_string_lossy().to_string();
-    let mime_type = mime_guess::from_path(&path).first().map(|m| m.to_string());
+    let mime_type = extension.as_ref().and_then(|ext| {
+        mime_guess::from_ext(ext)
+            .first()
+            .map(|m| m.to_string())
+            .or_else(|| {
+                TEXT_EXT
+                    .contains(&ext.as_str())
+                    .then_some("text/plain".to_string())
+            })
+    });
 
     let bundle = doc
         .get_first(fields.bundle)
