@@ -41,6 +41,8 @@ pub struct Params {
     path: String,
     #[serde(default)]
     filter: String,
+    #[serde(default)]
+    extension: String,
     limit: Option<usize>,
     #[serde(default)]
     debug_query: bool,
@@ -111,6 +113,7 @@ pub async fn handler(
         adapter,
         command,
         filter,
+        extension,
         mut path,
         mut limit,
         debug_query,
@@ -151,12 +154,21 @@ pub async fn handler(
         ..
     } = index;
 
-    let mut query: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::with_capacity(3);
+    let mut query: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::with_capacity(4);
 
     query.push((
         Occur::Must,
         Box::new(TermQuery::new(fields.version_term(adapter.as_str()), Basic)),
     ));
+    if !extension.is_empty() {
+        query.push((
+            Occur::Must,
+            Box::new(TermQuery::new(
+                Term::from_field_text(fields.extension, extension.as_str()),
+                Basic,
+            )),
+        ));
+    }
     if command == Command::Details {
         let (parent, name) = path.rsplit_once('/').unwrap_or(("", path.as_str()));
         query.push((
