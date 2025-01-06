@@ -2,8 +2,6 @@ use crate::index::state::{EntryType, Fields};
 use anyhow::Context;
 use axum::body::Bytes;
 use csv::ReaderBuilder;
-use encoding_rs::UTF_16LE;
-use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::collections::{BTreeMap, HashSet};
 use std::io::SeekFrom::Current;
 use std::io::{BufRead, Cursor, Read, Seek};
@@ -188,7 +186,7 @@ async fn add_sprite(
 async fn get_data(
     doc: &TantivyDocument,
     fields: &Fields,
-) -> anyhow::Result<csv::Reader<DecodeReaderBytes<Cursor<Bytes>, Vec<u8>>>> {
+) -> anyhow::Result<csv::Reader<Cursor<Bytes>>> {
     let size = doc
         .get_first(fields.size)
         .and_then(|v| v.as_u64())
@@ -242,10 +240,7 @@ async fn get_data(
         query.append_pair("bundle[name]", bundle_name);
     }
 
-    let utf16_bytes = reqwest::get(url).await?.bytes().await?;
-    let reader = DecodeReaderBytesBuilder::new()
-        .encoding(Some(UTF_16LE))
-        .build(Cursor::new(utf16_bytes));
+    let reader = Cursor::new(reqwest::get(url).await?.bytes().await?);
     Ok(ReaderBuilder::new()
         .has_headers(false)
         .delimiter(b' ')
