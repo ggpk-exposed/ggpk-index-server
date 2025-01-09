@@ -18,6 +18,6 @@ pub async fn handler(
             poe2.clone()
         }
     } else {
-        "".to_string()
+        String::default()
     }
 }

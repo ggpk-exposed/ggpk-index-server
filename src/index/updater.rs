@@ -15,26 +15,34 @@ pub async fn watch(state: AppState) {
             && check_urls("patch.pathofexile2.com:13060", &mut updated).await
         {
             let prev = { state.urls.read().await.clone() };
-            let removed = prev
-                .iter()
-                .filter(|url| !updated.contains(url))
-                .cloned()
-                .collect::<Vec<_>>();
-            let added = updated
-                .iter()
-                .filter(|url| !prev.contains(url))
-                .cloned()
-                .collect::<Vec<_>>();
-            if (!removed.is_empty() || !added.is_empty())
-                && reindex(state.index, removed, added)
+
+            let removed = subtract(&prev, &updated);
+            let added = subtract(&updated, &prev);
+
+            let did_update = if !removed.is_empty() || !added.is_empty() {
+                reindex(state.index, removed, added)
                     .await
                     .map_err(|e| eprintln!("indexing failed: {:?}", e))
                     .is_ok()
-            {
-                *state.urls.write().await = updated;
+            } else {
+                false
+            };
+
+            if did_update {
+                let mut urls = state.urls.write().await;
+                *urls = updated;
             }
+
+            println!("Update applied: {}", did_update);
         }
     }
+}
+
+fn subtract(prev: &Vec<String>, updated: &Vec<String>) -> Vec<String> {
+    prev.iter()
+        .filter(|url| !updated.contains(url))
+        .cloned()
+        .collect::<Vec<_>>()
 }
 
 async fn reindex(
@@ -42,6 +50,7 @@ async fn reindex(
     removed: Vec<String>,
     added: Vec<String>,
 ) -> anyhow::Result<()> {
+    println!("Updating index - added {:?}, removed {:?}", added, removed);
     let mut writer = index.writer::<TantivyDocument>(50_000_000)?;
     for r in &removed {
         writer.delete_term(fields.version_term(r.as_str()));
@@ -50,7 +59,7 @@ async fn reindex(
         crate::index::ggpk::index(r.as_str(), &writer, fields).await?
     }
     writer.commit()?;
-    println!("Index updated - added {:?}, removed {:?}", added, removed);
+    println!("Index updated");
     Ok(())
 }
 
