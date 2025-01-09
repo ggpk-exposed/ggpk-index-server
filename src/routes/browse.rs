@@ -14,10 +14,10 @@ use tantivy::schema::Value;
 use tantivy::{Searcher, TantivyDocument, Term};
 
 pub const TEXT_EXT: &'static [&'static str] = &[
-    "otc", "itc", "toy", "fxgraph", "pet", "rs", "tmd", "mat", "dlp", "et", "tgr", "ffx", "aoc",
-    "fgp", "txt", "clt", "epk", "gt", "tst", "ui", "hlsl", "arm", "hideout", "csd", "atl", "gft",
-    "amd", "tsi", "ecf", "xml", "h", "atlas", "it", "trl", "sm", "ao", "env", "mtd", "cht", "ot",
-    "act", "tgt", "dgr", "dct", "ddt", "tmo",
+    "act", "amd", "ao", "aoc", "arm", "atl", "atlas", "cht", "clt", "csd", "dct", "ddt", "dgr",
+    "dlp", "ecf", "env", "epk", "et", "ffx", "fgp", "fxgraph", "gft", "gt", "h", "hideout", "hlsl",
+    "it", "itc", "mat", "mtd", "ot", "otc", "pet", "rs", "sm", "tgr", "tgt", "tmd", "tmo", "toy",
+    "trl", "tsi", "tst", "txt", "ui", "xml",
 ];
 
 #[derive(Deserialize, Default, Eq, PartialEq)]
