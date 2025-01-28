@@ -15,9 +15,9 @@ use tantivy::{Searcher, TantivyDocument, Term};
 
 pub const TEXT_EXT: &'static [&'static str] = &[
     "act", "amd", "ao", "aoc", "arm", "atl", "atlas", "cht", "clt", "csd", "dct", "ddt", "dgr",
-    "dlp", "ecf", "env", "epk", "et", "ffx", "fgp", "fxgraph", "gft", "gt", "h", "hideout", "hlsl",
-    "it", "itc", "mat", "mtd", "ot", "otc", "pet", "rs", "sm", "tgr", "tgt", "tmd", "tmo", "toy",
-    "trl", "tsi", "tst", "txt", "ui", "xml",
+    "dlp", "ecf", "env", "epk", "et", "ffx", "fgp", "filter", "fxgraph", "gft", "gt", "h",
+    "hideout", "hlsl", "inc", "it", "itc", "mat", "mtd", "ot", "otc", "pet", "rs", "slg", "sm",
+    "tgr", "tgt", "tmo", "toy", "trl", "tsi", "tst", "txt", "ui", "xml",
 ];
 
 #[derive(Deserialize, Default, Eq, PartialEq)]
@@ -142,7 +142,9 @@ pub async fn handler(
             debug_query: None,
         }));
     }
-
+    if !path.is_empty() {
+        path = path.to_lowercase();
+    }
     if path.starts_with('/') {
         path = path.trim_start_matches('/').to_string();
     }
