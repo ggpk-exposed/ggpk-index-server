@@ -34,8 +34,5 @@
         "IndexContainer"
       ]
     }
-  ],
-  "vars": {
-    "BROWSER": "https://www.ggpk.exposed"
-  }
+  ]
 }
