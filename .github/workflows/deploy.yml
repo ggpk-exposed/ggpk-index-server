@@ -16,6 +16,7 @@ jobs:
 
       - name: Check for updates
         id: check
+        if: github.event_name == 'schedule'
         run: |
           # Fetch versions for PoE 1
           INDEXED1=$(curl -s https://ggpk.exposed/version?poe=1)
@@ -43,7 +44,7 @@ jobs:
           echo "proceed=$PROCEED" >> $GITHUB_OUTPUT
 
       - name: Deploy
-        if: steps.check.outputs.proceed == 'true'
+        if: github.event_name == 'schedule' || steps.check.outputs.proceed == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
