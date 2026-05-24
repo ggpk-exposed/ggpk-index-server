@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ggpk-index-server",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-10-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "dev": {
+    "port": 8790
+  },
+  "containers": [
+    {
+      "class_name": "IndexContainer",
+      "image": "./Dockerfile",
+      "max_instances": 5
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "IndexContainer",
+        "name": "INDEX_CONTAINER"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "IndexContainer"
+      ]
+    }
+  ],
+  "vars": {
+    "BROWSER": "https://www.ggpk.exposed"
+  }
+}

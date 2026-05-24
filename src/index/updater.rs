@@ -78,7 +78,7 @@ async fn check_urls(addr: &'static str, out: &mut Vec<String>) -> bool {
     }
 }
 
-async fn try_check_urls(addr: &'static str, out: &mut Vec<String>) -> Result<(), std::io::Error> {
+pub async fn try_check_urls(addr: &'static str, out: &mut Vec<String>) -> Result<(), std::io::Error> {
     let mut stream = TcpStream::connect(addr).await?;
     stream.write_all(&[1, 7]).await?;
     let mut buf = [0; 1000];

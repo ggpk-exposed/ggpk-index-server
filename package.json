@@ -1,0 +1,19 @@
+{
+  "name": "ggpk-index-server",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest",
+    "hono": "^4.12.22"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260524.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.94.0"
+  }
+}

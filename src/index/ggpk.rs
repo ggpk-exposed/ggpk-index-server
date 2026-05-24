@@ -68,7 +68,9 @@ pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyh
     })?;
 
     for sprite in sprites {
-        add_sprite(sprite, writer, fields, &mut dirs).await?;
+        if let Err(e) = add_sprite(sprite, writer, fields, &mut dirs).await {
+            eprintln!("Failed to index sprite: {}", e);
+        }
     }
 
     for filename in dirs {
@@ -213,7 +215,7 @@ async fn get_data(
         .last()
         .context("sprite version")?;
 
-    let frontend = std::env::var("FRONTEND_URL")?;
+    let frontend = std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     let mut url = Url::parse(frontend.as_str()).context(frontend)?;
     url.path_segments_mut()
         .map_err(|_| anyhow::Error::msg("path segments failed"))?

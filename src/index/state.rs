@@ -16,7 +16,7 @@ impl EntryType {
 pub struct IndexState {
     pub index: Index,
     pub fields: Fields,
-    pub path: TempDir,
+    pub path: Option<TempDir>,
     pub reader: IndexReader,
     pub query_parser: QueryParser,
 }
@@ -29,14 +29,40 @@ impl Default for IndexState {
 
 impl IndexState {
     pub fn new() -> Self {
+        let path = TempDir::new().expect("Could not create index directory.");
+        Self::create_in_dir(path.path().to_path_buf(), Some(path))
+    }
+
+    pub fn open(path: std::path::PathBuf) -> Self {
+        let index = Index::open_in_dir(&path).expect("Could not open index.");
+        Self::from_index(index, None)
+    }
+
+    pub fn create(path: std::path::PathBuf) -> Self {
         let mut schema_builder = Schema::builder();
-
-        let fields = Fields::new(&mut schema_builder);
-
+        let _fields = Fields::new(&mut schema_builder);
         let schema = schema_builder.build();
 
-        let path = TempDir::new().expect("Could not create index directory.");
-        let index = Index::create_in_dir(&path, schema.clone()).expect("Could not create index.");
+        if !path.exists() {
+            std::fs::create_dir_all(&path).expect("Could not create directory");
+        }
+        let index = Index::create_in_dir(&path, schema).expect("Could not create index.");
+        Self::from_index(index, None)
+    }
+
+    fn create_in_dir(path: std::path::PathBuf, temp: Option<TempDir>) -> Self {
+        let mut schema_builder = Schema::builder();
+        let _fields = Fields::new(&mut schema_builder);
+        let schema = schema_builder.build();
+
+        let index = Index::create_in_dir(&path, schema).expect("Could not create index.");
+        Self::from_index(index, temp)
+    }
+
+    fn from_index(index: Index, path: Option<TempDir>) -> Self {
+        let schema = index.schema();
+        let mut schema_builder = Schema::builder();
+        let fields = Fields::new(&mut schema_builder);
         let reader = index.reader().expect("Could not create reader.");
 
         let mut query_parser =
