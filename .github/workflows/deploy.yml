@@ -6,7 +6,7 @@ on:
       - main
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 * * * *'
 
 jobs:
   deploy:
@@ -14,7 +14,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check for updates
+        id: check
+        run: |
+          # Fetch versions for PoE 1
+          INDEXED1=$(curl -s https://ggpk.exposed/version?poe=1)
+          SOCKET1=$(curl -s https://ggpk.exposed/version?poe=1&live)
+          
+          # Fetch versions for PoE 2
+          INDEXED2=$(curl -s https://ggpk.exposed/version?poe=2)
+          SOCKET2=$(curl -s https://ggpk.exposed/version?poe=2&live)
+          
+          echo "PoE 1: Indexed=$INDEXED1, Socket=$SOCKET1"
+          echo "PoE 2: Indexed=$INDEXED2, Socket=$SOCKET2"
+          
+          PROCEED=false
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Not a scheduled run. Proceeding."
+            PROCEED=true
+          elif [ -n "$SOCKET1" ] && [ "$INDEXED1" != "$SOCKET1" ]; then
+            echo "PoE 1 update detected."
+            PROCEED=true
+          elif [ -n "$SOCKET2" ] && [ "$INDEXED2" != "$SOCKET2" ]; then
+            echo "PoE 2 update detected."
+            PROCEED=true
+          fi
+          
+          echo "proceed=$PROCEED" >> $GITHUB_OUTPUT
+
       - name: Deploy
+        if: steps.check.outputs.proceed == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -60,6 +60,7 @@ async fn main() {
     let app = Router::new()
         .route("/files", get(routes::browse::handler))
         .route("/version", get(routes::version::handler))
+        .route("/check-version", get(routes::version::socket_handler))
         .with_state(state);
 
     let port = std::env::var("PORT")

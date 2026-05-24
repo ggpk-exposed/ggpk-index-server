@@ -21,3 +21,19 @@ pub async fn handler(
         String::default()
     }
 }
+
+pub async fn socket_handler(
+    Query(Params { poe }): Query<Params>,
+) -> String {
+    let addr = if poe == 1 {
+        "patch.pathofexile.com:12995"
+    } else {
+        "patch.pathofexile2.com:13060"
+    };
+    let mut urls = Vec::new();
+    if crate::index::updater::try_check_urls(addr, &mut urls).await.is_ok() {
+        urls.into_iter().next().unwrap_or_default()
+    } else {
+        String::default()
+    }
+}
