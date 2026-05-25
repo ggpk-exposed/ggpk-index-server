@@ -33,27 +33,26 @@ pub async fn watch(state: AppState) {
 
 async fn update_storage(
     state: &AppState,
-    prev: &Vec<String>,
+    prev: &[String],
     updated: Vec<String>,
     lock: &Arc<RwLock<Vec<String>>>,
 ) -> bool {
     let removed = subtract(prev, &updated);
     let added = subtract(&updated, prev);
 
-    if !removed.is_empty() || !added.is_empty() {
-        if reindex(state.index, removed, added).await
-            .map_err(|e| eprintln!("indexing failed: {:?}", e))
+    if (!removed.is_empty() || !added.is_empty())
+        && reindex(state.index, removed, added).await
+            .map_err(|e| eprintln!("indexing failed: {e:?}"))
             .is_ok()
         {
             let mut urls = lock.write().await;
             *urls = updated;
             return true;
         }
-    }
     false
 }
 
-fn subtract(prev: &Vec<String>, updated: &Vec<String>) -> Vec<String> {
+fn subtract(prev: &[String], updated: &[String]) -> Vec<String> {
     prev.iter()
         .filter(|url| !updated.contains(url))
         .cloned()
@@ -65,7 +64,7 @@ async fn reindex(
     removed: Vec<String>,
     added: Vec<String>,
 ) -> anyhow::Result<()> {
-    println!("Updating index - added {:?}, removed {:?}", added, removed);
+    println!("Updating index - added {added:?}, removed {removed:?}");
     let mut writer = index.writer::<TantivyDocument>(50_000_000)?;
     for r in &removed {
         writer.delete_term(fields.version_term(r.as_str()));
@@ -82,11 +81,11 @@ async fn check_urls(addr: &'static str, out: &mut Vec<String>) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(10), try_check_urls(addr, out)).await;
     match result {
         Err(_) => {
-            eprintln!("Timed out connecting to {}", addr);
+            eprintln!("Timed out connecting to {addr}");
             false
         }
         Ok(Err(e)) => {
-            eprintln!("Error getting urls from {}: {:?}", addr, e);
+            eprintln!("Error getting urls from {addr}: {e:?}");
             false
         }
         Ok(Ok(())) => true,
@@ -101,7 +100,7 @@ pub async fn try_check_urls(addr: &'static str, out: &mut Vec<String>) -> Result
     if read < 34 {
         return Err(std::io::Error::new(
             ErrorKind::InvalidData,
-            format!("Server returned only {} bytes", read),
+            format!("Server returned only {read} bytes"),
         ));
     }
     let mut data = &buf[34..read];
@@ -113,7 +112,7 @@ pub async fn try_check_urls(addr: &'static str, out: &mut Vec<String>) -> Result
         } else if len > data.len() {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                format!("len {} too big", len),
+                format!("len {len} too big"),
             ));
         }
         let raw = data

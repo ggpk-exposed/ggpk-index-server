@@ -13,7 +13,7 @@ use tantivy::schema::IndexRecordOption::Basic;
 use tantivy::schema::Value;
 use tantivy::{Searcher, TantivyDocument, Term};
 
-pub const TEXT_EXT: &'static [&'static str] = &[
+pub const TEXT_EXT: &[&str] = &[
     "act", "amd", "ao", "aoc", "arm", "atl", "atlas", "cht", "clt", "csd", "dct", "ddt", "dgr",
     "dlp", "ecf", "env", "epk", "et", "ffx", "fgp", "filter", "fxgraph", "gft", "gt", "h",
     "hideout", "hlsl", "inc", "it", "itc", "mat", "mtd", "ot", "otc", "pet", "rs", "slg", "sm",
@@ -224,7 +224,7 @@ pub async fn handler(
                 Occur::Must,
                 query_parser
                     .parse_query(filter.as_str())
-                    .map_err(|e| error(format!("error performing query: {}", e), &storages))?,
+                    .map_err(|e| error(format!("error performing query: {e}"), &storages))?,
             ))
         }
     } else {
@@ -247,7 +247,7 @@ pub async fn handler(
     }
     let query: Box<dyn tantivy::query::Query> = Box::new(BooleanQuery::new(query));
 
-    let debug_query = debug_query.then(|| format!("{:?}", query));
+    let debug_query = debug_query.then(|| format!("{query:?}"));
 
     let mut files = perform_query(&reader.searcher(), &storages, query, limit, |doc| {
         process_doc(adapter.clone(), fields, doc)
@@ -373,19 +373,19 @@ fn perform_query<T, M: FnMut(Result<TantivyDocument, Response>) -> Result<T, Res
     } else {
         searcher.search(&query, &CollectAll)
     }
-    .map_err(|e| error(format!("error performing query: {}", e), storages))?;
+    .map_err(|e| error(format!("error performing query: {e}"), storages))?;
 
     let results: Result<Vec<T>, Response> = found
         .iter()
         .map(|&(_, addr)| {
             searcher
                 .doc(addr)
-                .map_err(|e| error(format!("error fetching results: {}", e), storages))
+                .map_err(|e| error(format!("error fetching results: {e}"), storages))
         })
         .map(map)
         .collect();
 
-    Ok(results?)
+    results
 }
 
 fn error(error: String, storages: &[String]) -> Response {

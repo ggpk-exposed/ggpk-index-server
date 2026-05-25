@@ -34,7 +34,7 @@ async fn main() {
             .await
             .expect("Failed to fetch PoE2 URLs");
 
-        println!("Building index for PoE1 URLs: {:?}, PoE2 URLs: {:?}", poe1_urls, poe2_urls);
+        println!("Building index for PoE1 URLs: {poe1_urls:?}, PoE2 URLs: {poe2_urls:?}");
         let mut writer = state
             .index
             .index

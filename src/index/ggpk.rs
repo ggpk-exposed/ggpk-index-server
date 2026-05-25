@@ -69,7 +69,7 @@ pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyh
 
     for sprite in sprites {
         if let Err(e) = add_sprite(sprite, writer, fields, &mut dirs).await {
-            eprintln!("Failed to index sprite: {}", e);
+            eprintln!("Failed to index sprite: {e}");
         }
     }
 
@@ -91,8 +91,8 @@ fn to_doc(
     filename: &str,
     version: &str,
     fields: &Fields,
-    bundle_names: &Vec<&str>,
-    bundle_sizes: &Vec<u32>,
+    bundle_names: &[&str],
+    bundle_sizes: &[u32],
     files: &BTreeMap<u64, (u32, u32, u32)>,
 ) -> anyhow::Result<TantivyDocument> {
     let mut doc = TantivyDocument::new();
@@ -113,7 +113,7 @@ fn to_doc(
         doc.add_text(fields.bundle, bundle);
         doc.add_u64(fields.bundle_size, bundle_size as u64);
     } else {
-        eprintln!("No file found for hash {} of {}", hash, filename);
+        eprintln!("No file found for hash {hash} of {filename}");
     }
 
     Ok(doc)
@@ -170,7 +170,7 @@ async fn add_sprite(
         doc.add_text(fields.parent, dir);
 
         doc.add_text(fields.sprite_sheet, source);
-        sprite_txt.map(|txt| doc.add_text(fields.sprite_txt, txt));
+        if let Some(txt) = sprite_txt { doc.add_text(fields.sprite_txt, txt) }
         // min and abs_diff not really necessary as x1 and y1 should always be top left, but what's the harm
         doc.add_u64(fields.sprite_x, x.min(x2));
         doc.add_u64(fields.sprite_y, y.min(y2));
@@ -212,7 +212,7 @@ async fn get_data(
     let version = storage
         .split('/')
         .filter(|&v| !v.is_empty())
-        .last()
+        .next_back()
         .context("sprite version")?;
 
     let frontend = std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
@@ -260,8 +260,7 @@ fn decompress<T: Read>(f: &mut T) -> anyhow::Result<Vec<u8>> {
     // granularity u32,
     let granularity = read_u32(f)? as usize;
     println!(
-        "uncompressed size: {}, block count: {}, granularity: {}",
-        uncompressed_size, block_count, granularity
+        "uncompressed size: {uncompressed_size}, block count: {block_count}, granularity: {granularity}"
     );
     buf.reserve(uncompressed_size - 20);
     // unknown [u32; 4]
