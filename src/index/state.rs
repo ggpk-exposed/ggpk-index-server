@@ -66,8 +66,8 @@ impl IndexState {
         let reader = index.reader().expect("Could not create reader.");
 
         let mut query_parser =
-            QueryParser::new(schema, vec![fields.path], TokenizerManager::default());
-        query_parser.set_field_fuzzy(fields.path, true, 0, false);
+            QueryParser::new(schema, vec![fields.name], TokenizerManager::default());
+        query_parser.set_field_fuzzy(fields.name, true, 0, false);
 
         Self {
             path,
