@@ -16,15 +16,14 @@ jobs:
 
       - name: Check for updates
         id: check
-        if: github.event_name == 'schedule'
         run: |
           # Fetch versions for PoE 1
-          INDEXED1=$(curl -s https://ggpk.exposed/version?poe=1)
-          SOCKET1=$(curl -s https://ggpk.exposed/version?poe=1&live)
+          INDEXED1=$(curl -s 'https://ggpk.exposed/version?poe=1')
+          SOCKET1=$(curl -s 'https://ggpk.exposed/version?poe=1&live')
           
           # Fetch versions for PoE 2
-          INDEXED2=$(curl -s https://ggpk.exposed/version?poe=2)
-          SOCKET2=$(curl -s https://ggpk.exposed/version?poe=2&live)
+          INDEXED2=$(curl -s 'https://ggpk.exposed/version?poe=2')
+          SOCKET2=$(curl -s 'https://ggpk.exposed/version?poe=2&live')
           
           echo "PoE 1: Indexed=$INDEXED1, Socket=$SOCKET1"
           echo "PoE 2: Indexed=$INDEXED2, Socket=$SOCKET2"
@@ -44,7 +43,7 @@ jobs:
           echo "proceed=$PROCEED" >> $GITHUB_OUTPUT
 
       - name: Deploy
-        if: github.event_name != 'schedule' || steps.check.outputs.proceed == 'true'
+        if: steps.check.outputs.proceed == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           wranglerVersion: "4"
