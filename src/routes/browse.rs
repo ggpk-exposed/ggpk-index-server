@@ -46,6 +46,8 @@ pub struct Params {
     limit: Option<usize>,
     #[serde(default)]
     debug_query: bool,
+    #[serde(default)]
+    deep: String,
 }
 
 #[derive(Serialize)]
@@ -117,6 +119,7 @@ pub async fn handler(
         mut path,
         mut limit,
         debug_query,
+        deep,
     }): Query<Params>,
     State(state): State<AppState>,
 ) -> Result<Json<IndexResponse>, Response> {
@@ -209,13 +212,23 @@ pub async fn handler(
         if limit.is_none() {
             limit = Some(50);
         }
-        if !path.is_empty() {
+        if deep == "1" {
+            if !path.is_empty() {
+                query.push((
+                    Occur::Must,
+                    Box::new(FuzzyTermQuery::new_prefix(
+                        Term::from_field_text(fields.parent, path.as_str()),
+                        0,
+                        false,
+                    )),
+                ))
+            }
+        } else {
             query.push((
                 Occur::Must,
-                Box::new(FuzzyTermQuery::new_prefix(
+                Box::new(TermQuery::new(
                     Term::from_field_text(fields.parent, path.as_str()),
-                    0,
-                    false,
+                    Basic,
                 )),
             ))
         }
