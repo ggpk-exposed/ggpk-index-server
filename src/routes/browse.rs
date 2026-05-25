@@ -8,7 +8,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tantivy::collector::TopDocs;
-use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, TermQuery};
+use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, RangeQuery, TermQuery};
 use tantivy::schema::IndexRecordOption::Basic;
 use tantivy::schema::Value;
 use tantivy::{Searcher, TantivyDocument, Term};
@@ -48,6 +48,7 @@ pub struct Params {
     debug_query: bool,
     #[serde(default)]
     deep: String,
+    size: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -110,6 +111,8 @@ pub struct ErrorResponse<'a> {
     pub error: String,
 }
 
+const MB: u64 = 1000000;
+
 pub async fn handler(
     Query(Params {
         adapter,
@@ -120,6 +123,7 @@ pub async fn handler(
         mut limit,
         debug_query,
         deep,
+        size,
     }): Query<Params>,
     State(state): State<AppState>,
 ) -> Result<Json<IndexResponse>, Response> {
@@ -209,8 +213,16 @@ pub async fn handler(
             )),
         ))
     } else if command == Command::Search {
-        if limit.is_none() {
-            limit = Some(50);
+        if let Some(range) = match size.as_deref() {
+            Some("small") => Some(0..MB),
+            Some("medium") => Some(MB..10 * MB),
+            Some("large") => Some(10 * MB..u64::MAX),
+            _ => None,
+        } {
+            query.push((
+                Occur::Must,
+                Box::new(RangeQuery::new_u64("size".to_string(), range)),
+            ))
         }
         if deep == "1" {
             if !path.is_empty() {
