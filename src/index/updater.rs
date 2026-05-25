@@ -1,41 +1,56 @@
 use crate::index::state::IndexState;
 use crate::AppState;
 use std::io::ErrorKind;
+use std::sync::Arc;
 use std::time::Duration;
 use tantivy::TantivyDocument;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::RwLock;
 
 pub async fn watch(state: AppState) {
     let mut interval = tokio::time::interval(Duration::from_secs(10 * 60));
     loop {
         interval.tick().await;
-        let mut updated = Vec::with_capacity(2);
-        if check_urls("patch.pathofexile.com:12995", &mut updated).await
-            && check_urls("patch.pathofexile2.com:13060", &mut updated).await
-        {
-            let prev = { state.urls.read().await.clone() };
 
-            let removed = subtract(&prev, &updated);
-            let added = subtract(&updated, &prev);
-
-            let did_update = if !removed.is_empty() || !added.is_empty() {
-                reindex(state.index, removed, added)
-                    .await
-                    .map_err(|e| eprintln!("indexing failed: {:?}", e))
-                    .is_ok()
-            } else {
-                false
-            };
-
-            if did_update {
-                let mut urls = state.urls.write().await;
-                *urls = updated;
+        let mut poe1_updated = Vec::with_capacity(1);
+        if check_urls("patch.pathofexile.com:12995", &mut poe1_updated).await {
+            let prev = { state.poe1.read().await.clone() };
+            if update_storage(&state, &prev, poe1_updated, &state.poe1).await {
+                println!("PoE1 updated");
             }
+        }
 
-            println!("Update applied: {}", did_update);
+        let mut poe2_updated = Vec::with_capacity(1);
+        if check_urls("patch.pathofexile2.com:13060", &mut poe2_updated).await {
+            let prev = { state.poe2.read().await.clone() };
+            if update_storage(&state, &prev, poe2_updated, &state.poe2).await {
+                println!("PoE2 updated");
+            }
         }
     }
+}
+
+async fn update_storage(
+    state: &AppState,
+    prev: &Vec<String>,
+    updated: Vec<String>,
+    lock: &Arc<RwLock<Vec<String>>>,
+) -> bool {
+    let removed = subtract(prev, &updated);
+    let added = subtract(&updated, prev);
+
+    if !removed.is_empty() || !added.is_empty() {
+        if reindex(state.index, removed, added).await
+            .map_err(|e| eprintln!("indexing failed: {:?}", e))
+            .is_ok()
+        {
+            let mut urls = lock.write().await;
+            *urls = updated;
+            return true;
+        }
+    }
+    false
 }
 
 fn subtract(prev: &Vec<String>, updated: &Vec<String>) -> Vec<String> {

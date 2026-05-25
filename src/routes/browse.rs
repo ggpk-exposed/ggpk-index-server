@@ -118,17 +118,28 @@ pub async fn handler(
         mut limit,
         debug_query,
     }): Query<Params>,
-    State(AppState { urls, index }): State<AppState>,
+    State(state): State<AppState>,
 ) -> Result<Json<IndexResponse>, Response> {
-    let storages = { urls.read().await.clone() };
-    if storages.is_empty() {
-        return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
+    let storages = state.storages().await;
+
+    let mut adapter = adapter;
+    if adapter.is_none() && !path.is_empty() {
+        if let Some((first, rest)) = path.split_once('/') {
+            if storages.contains(&first.to_string()) {
+                adapter = Some(first.to_string());
+                path = rest.to_string();
+            }
+        } else if storages.contains(&path) {
+            adapter = Some(path.to_string());
+            path = String::new();
+        }
     }
 
-    let adapter = adapter
-        .and_then(|v| storages.iter().find(|&s| s.as_str() == v.as_str()))
-        .unwrap_or_else(|| &storages[0])
-        .clone();
+    let (adapter, urls) = match adapter {
+        Some(a) if storages.contains(&a) => (a.clone(), state.urls(&a).await),
+        Some(a) => (a.clone(), vec![a]),
+        None => (storages[0].clone(), state.urls(&storages[0]).await),
+    };
 
     if limit == Some(0) {
         limit = None
@@ -154,14 +165,21 @@ pub async fn handler(
         fields,
         query_parser,
         ..
-    } = index;
+    } = state.index;
 
     let mut query: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::with_capacity(4);
 
-    query.push((
-        Occur::Must,
-        Box::new(TermQuery::new(fields.version_term(adapter.as_str()), Basic)),
-    ));
+    let mut version_query: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    for url in &urls {
+        version_query.push((
+            Occur::Should,
+            Box::new(TermQuery::new(fields.version_term(url.as_str()), Basic)),
+        ));
+    }
+    if !version_query.is_empty() {
+        query.push((Occur::Must, Box::new(BooleanQuery::new(version_query))));
+    }
+
     if !extension.is_empty() {
         query.push((
             Occur::Must,

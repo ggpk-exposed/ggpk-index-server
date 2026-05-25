@@ -25,28 +25,33 @@ async fn main() {
 
     if build_index {
         let dir = index_dir.expect("INDEX_DIR is required for BUILD_INDEX");
-        let mut urls = Vec::new();
-        index::updater::try_check_urls("patch.pathofexile.com:12995", &mut urls)
+        let mut poe1_urls = Vec::new();
+        index::updater::try_check_urls("patch.pathofexile.com:12995", &mut poe1_urls)
             .await
             .expect("Failed to fetch PoE1 URLs");
-        index::updater::try_check_urls("patch.pathofexile2.com:13060", &mut urls)
+        let mut poe2_urls = Vec::new();
+        index::updater::try_check_urls("patch.pathofexile2.com:13060", &mut poe2_urls)
             .await
             .expect("Failed to fetch PoE2 URLs");
 
-        println!("Building index for URLs: {:?}", urls);
+        println!("Building index for PoE1 URLs: {:?}, PoE2 URLs: {:?}", poe1_urls, poe2_urls);
         let mut writer = state
             .index
             .index
             .writer::<tantivy::TantivyDocument>(100_000_000)
             .expect("Failed to create writer");
-        for url in &urls {
+        for url in poe1_urls.iter().chain(poe2_urls.iter()) {
             index::ggpk::index(url, &writer, &state.index.fields)
                 .await
                 .expect("Failed to index");
         }
         writer.commit().expect("Failed to commit");
 
-        std::fs::write(dir.join("urls.json"), serde_json::to_string(&urls).unwrap())
+        let mut map = std::collections::HashMap::new();
+        map.insert("poe1", poe1_urls);
+        map.insert("poe2", poe2_urls);
+
+        std::fs::write(dir.join("urls.json"), serde_json::to_string(&map).unwrap())
             .expect("Failed to save URLs");
 
         println!("Index build complete");
@@ -74,33 +79,54 @@ async fn main() {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub urls: Arc<RwLock<Vec<String>>>,
+    pub poe1: Arc<RwLock<Vec<String>>>,
+    pub poe2: Arc<RwLock<Vec<String>>>,
     pub index: &'static IndexState,
 }
 
 impl AppState {
     fn new() -> Self {
-        let urls = Arc::new(RwLock::new(Vec::<String>::new()));
+        let poe1 = Arc::new(RwLock::new(Vec::<String>::new()));
+        let poe2 = Arc::new(RwLock::new(Vec::<String>::new()));
         let index = Box::leak(Box::new(IndexState::new()));
-        Self { urls, index }
+        Self { poe1, poe2, index }
     }
 
     fn open(path: std::path::PathBuf) -> Self {
         let urls_path = path.join("urls.json");
-        let urls = if urls_path.exists() {
+        let (poe1, poe2) = if urls_path.exists() {
             let content = std::fs::read_to_string(urls_path).expect("Failed to read URLs");
-            serde_json::from_str(&content).expect("Failed to parse URLs")
+            let map: std::collections::HashMap<String, Vec<String>> =
+                serde_json::from_str(&content).expect("Failed to parse URLs");
+            (
+                map.get("poe1").cloned().unwrap_or_default(),
+                map.get("poe2").cloned().unwrap_or_default(),
+            )
         } else {
-            Vec::<String>::new()
+            (Vec::new(), Vec::new())
         };
-        let urls = Arc::new(RwLock::new(urls));
+        let poe1 = Arc::new(RwLock::new(poe1));
+        let poe2 = Arc::new(RwLock::new(poe2));
         let index = Box::leak(Box::new(IndexState::open(path)));
-        Self { urls, index }
+        Self { poe1, poe2, index }
     }
 
     fn create(path: std::path::PathBuf) -> Self {
-        let urls = Arc::new(RwLock::new(Vec::<String>::new()));
+        let poe1 = Arc::new(RwLock::new(Vec::<String>::new()));
+        let poe2 = Arc::new(RwLock::new(Vec::<String>::new()));
         let index = Box::leak(Box::new(IndexState::create(path)));
-        Self { urls, index }
+        Self { poe1, poe2, index }
+    }
+
+    pub async fn storages(&self) -> Vec<String> {
+        vec!["poe1".to_string(), "poe2".to_string()]
+    }
+
+    pub async fn urls(&self, storage: &str) -> Vec<String> {
+        match storage {
+            "poe1" => self.poe1.read().await.clone(),
+            "poe2" => self.poe2.read().await.clone(),
+            _ => Vec::new(),
+        }
     }
 }

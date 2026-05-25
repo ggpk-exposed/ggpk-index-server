@@ -11,15 +11,12 @@ pub async fn handler(
     Query(Params { poe }): Query<Params>,
     State(state): State<AppState>,
 ) -> String {
-    if let [poe1, poe2] = { state.urls.read().await.clone().as_slice() } {
-        if poe == 1 {
-            poe1.clone()
-        } else {
-            poe2.clone()
-        }
+    let urls = if poe == 1 {
+        state.poe1.read().await
     } else {
-        String::default()
-    }
+        state.poe2.read().await
+    };
+    urls.first().cloned().unwrap_or_default()
 }
 
 pub async fn socket_handler(
