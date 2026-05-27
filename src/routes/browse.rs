@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use std::ops::Bound;
 use std::path::PathBuf;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, FuzzyTermQuery, Occur, RangeQuery, TermQuery};
@@ -214,14 +215,17 @@ pub async fn handler(
         ))
     } else if command == Command::Search {
         if let Some(range) = match size.as_deref() {
-            Some("small") => Some(0..MB),
-            Some("medium") => Some(MB..10 * MB),
-            Some("large") => Some(10 * MB..u64::MAX),
+            Some("small") => Some((0u64, MB)),
+            Some("medium") => Some((MB, 10 * MB)),
+            Some("large") => Some((10 * MB, u64::MAX)),
             _ => None,
         } {
             query.push((
                 Occur::Must,
-                Box::new(RangeQuery::new_u64("size".to_string(), range)),
+                Box::new(RangeQuery::new(
+                    Bound::Included(Term::from_field_u64(fields.size, range.0)),
+                    Bound::Included(Term::from_field_u64(fields.size, range.1)),
+                )),
             ))
         }
         if deep == "1" {
@@ -394,7 +398,7 @@ fn perform_query<T, M: FnMut(Result<TantivyDocument, Response>) -> Result<T, Res
     map: M,
 ) -> Result<Vec<T>, Response> {
     let found = if let Some(limit) = limit {
-        searcher.search(&query, &TopDocs::with_limit(limit))
+        searcher.search(&query, &TopDocs::with_limit(limit).order_by_score())
     } else {
         searcher.search(&query, &CollectAll)
     }
