@@ -170,7 +170,9 @@ async fn add_sprite(
         doc.add_text(fields.parent, dir);
 
         doc.add_text(fields.sprite_sheet, source);
-        if let Some(txt) = sprite_txt { doc.add_text(fields.sprite_txt, txt) }
+        if let Some(txt) = sprite_txt {
+            doc.add_text(fields.sprite_txt, txt)
+        }
         // min and abs_diff not really necessary as x1 and y1 should always be top left, but what's the harm
         doc.add_u64(fields.sprite_x, x.min(x2));
         doc.add_u64(fields.sprite_y, y.min(y2));
@@ -215,7 +217,8 @@ async fn get_data(
         .next_back()
         .context("sprite version")?;
 
-    let frontend = std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let frontend =
+        std::env::var("FRONTEND_URL").unwrap_or_else(|_| "https://ggpk.exposed".to_string());
     let mut url = Url::parse(frontend.as_str()).context(frontend)?;
     url.path_segments_mut()
         .map_err(|_| anyhow::Error::msg("path segments failed"))?
