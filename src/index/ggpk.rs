@@ -9,6 +9,8 @@ use tantivy::schema::Value;
 use tantivy::{IndexWriter, TantivyDocument};
 use url::Url;
 
+const PROCESS_SPRITE_SHEETS: bool = false;
+
 pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyhow::Result<()> {
     let base = Url::parse(version)?;
     let url = base.join("Bundles2/_.index.bin")?;
@@ -56,7 +58,7 @@ pub async fn index(version: &str, writer: &IndexWriter, fields: &Fields) -> anyh
 
         if let Some((_, ext)) = filename.rsplit_once('.') {
             doc.add_text(fields.extension, ext);
-            if ext == "txt" && filename.starts_with("art") {
+            if PROCESS_SPRITE_SHEETS && ext == "txt" && filename.starts_with("art") {
                 sprites.push(doc.clone());
             }
         }
