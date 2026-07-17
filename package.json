@@ -9,12 +9,12 @@
   },
   "dependencies": {
     "@cloudflare/containers": "latest",
-    "hono": "^4.12.22"
+    "hono": "^4.12.30"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260524.1",
-    "@types/node": "^25.9.1",
-    "typescript": "^6.0.3",
-    "wrangler": "^4.94.0"
+    "@cloudflare/workers-types": "^5.20260717.1",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.111.0"
   }
 }
