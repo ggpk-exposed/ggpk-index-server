@@ -143,8 +143,8 @@ async fn add_sprite(
         let (mut filename, mut source, x, y, x2, y2) = match record {
             Err(e) => {
                 eprintln!(
-                    "Error parsing record from {:?}: {}",
-                    base.get_first(fields.path),
+                    "Error parsing record from {}: {}",
+                    sprite_txt.unwrap_or("<unknown file>"),
                     e
                 );
                 continue;
